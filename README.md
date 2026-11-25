@@ -37,3 +37,13 @@ Frosted-glass salon website and automated WhatsApp booking & inquiry platform fo
    npm run build
    NODE_ENV=production npm start
    ```
+
+## Deploying on Vercel
+
+This repository includes `vercel.json` and `api/index.ts` so both the Vite frontend and `/api/*`, `/robots.txt`, and `/sitemap.xml` routes run cleanly on Vercel.
+
+In your Vercel project's **Settings → Environment Variables**, configure:
+- `PARLOUR_WHATSAPP_NUMBER` (e.g., `919876543210`)
+- `ADMIN_PASSCODE` (recommended on serverless deployments so Admin Desk login works consistently across cold starts)
+- `SESSION_SECRET` (random 32+ character string so admin sessions stay valid across serverless instances)
+
