@@ -32,6 +32,8 @@ function ServiceCard({
           <img
             src={service.imageUrl}
             alt={service.imageAlt}
+            loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
             onError={() => setImgFailed(true)}
             className="h-full w-full object-cover"

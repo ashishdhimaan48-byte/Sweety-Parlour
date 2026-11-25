@@ -2,5 +2,7 @@
   "name": "Sweety Beauty Parlour",
   "description": "Luxury bridal, skincare, hair, and mehndi studio in Lawar, Meerut with automated WhatsApp inquiry and appointment booking workflows.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

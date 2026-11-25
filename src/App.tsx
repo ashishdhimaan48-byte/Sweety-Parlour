@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react';
-import { HeroSection, type ThemeMode } from './components/HeroSection';
+import { FaqSection } from './components/FaqSection';
+import { HeroSection } from './components/HeroSection';
 import { LocationFooter } from './components/LocationFooter';
 import { Navbar } from './components/Navbar';
 import { ParlourDesk } from './components/ParlourDesk';
 import { ServicesShowcase } from './components/ServicesShowcase';
 import { WhatsAppHub, type HubMode } from './components/WhatsAppHub';
-import { PARLOUR_INFO, SERVICES, type ParlourService } from './utils/parlour';
+import {
+  HERO_IMAGE,
+  PARLOUR_INFO,
+  SERVICES,
+  buildParlourStructuredData,
+  type ParlourService,
+} from './utils/parlour';
+
+export type ThemeMode = 'light' | 'dark';
 
 interface PublicConfig {
   whatsappDisplayNumber: string;
@@ -61,6 +70,32 @@ export default function App() {
     void loadConfig();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const origin = window.location.origin;
+    const canonicalUrl = `${origin}${window.location.pathname}`;
+    const absoluteHeroUrl = `${origin}${HERO_IMAGE.url}`;
+
+    const canonicalEl = document.getElementById('canonical-link') as HTMLLinkElement | null;
+    if (canonicalEl) canonicalEl.href = canonicalUrl;
+
+    const ogUrlEl = document.getElementById('og-url-meta') as HTMLMetaElement | null;
+    if (ogUrlEl) ogUrlEl.content = canonicalUrl;
+
+    const ogImgEl = document.getElementById('og-image-meta') as HTMLMetaElement | null;
+    if (ogImgEl) ogImgEl.content = absoluteHeroUrl;
+
+    const twImgEl = document.getElementById('twitter-image-meta') as HTMLMetaElement | null;
+    if (twImgEl) twImgEl.content = absoluteHeroUrl;
+
+    const ldEl = document.getElementById('parlour-jsonld');
+    if (ldEl) {
+      ldEl.textContent = JSON.stringify(
+        buildParlourStructuredData(origin, publicConfig.whatsappDisplayNumber),
+      );
+    }
+  }, [publicConfig.whatsappDisplayNumber]);
+
   const scrollToHub = (targetMode: HubMode) => {
     setHubMode(targetMode);
     const el = document.getElementById('book-inquire');
@@ -77,6 +112,8 @@ export default function App() {
   return (
     <div className="min-h-screen text-[#1f1418] dark:text-[#f7eff2]">
       <Navbar
+        theme={theme}
+        onThemeChange={setTheme}
         onBookNow={() => scrollToHub('booking')}
         onOpenDesk={() => setDeskOpen(true)}
       />
@@ -84,8 +121,6 @@ export default function App() {
       <main aria-label={PARLOUR_INFO.name}>
         <HeroSection
           whatsappDisplayNumber={publicConfig.whatsappDisplayNumber}
-          theme={theme}
-          onThemeChange={setTheme}
           onStartBooking={() => scrollToHub('booking')}
           onStartInquiry={() => scrollToHub('inquiry')}
         />
@@ -103,6 +138,8 @@ export default function App() {
           whatsappDisplayNumber={publicConfig.whatsappDisplayNumber}
           cloudApiConfigured={publicConfig.cloudApiConfigured}
         />
+
+        <FaqSection />
       </main>
 
       <LocationFooter

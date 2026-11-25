@@ -1,21 +1,15 @@
 import { useState } from 'react';
-import { ArrowRight, CalendarCheck2, MessageCircle, Moon, Sparkles, Sun } from 'lucide-react';
+import { ArrowRight, CalendarCheck2, MessageCircle, Sparkles } from 'lucide-react';
 import { HERO_IMAGE } from '../utils/parlour';
-
-export type ThemeMode = 'light' | 'dark';
 
 interface HeroSectionProps {
   whatsappDisplayNumber: string;
-  theme: ThemeMode;
-  onThemeChange: (mode: ThemeMode) => void;
   onStartBooking: () => void;
   onStartInquiry: () => void;
 }
 
 export function HeroSection({
   whatsappDisplayNumber,
-  theme,
-  onThemeChange,
   onStartBooking,
   onStartInquiry,
 }: HeroSectionProps) {
@@ -27,44 +21,9 @@ export function HeroSection({
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-stretch">
           <div className="flex flex-col justify-between lg:col-span-6 lg:pr-4">
             <div>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs font-semibold tracking-widest uppercase text-[#7a1f3d] dark:text-[#e06d91]">
-                  Lawar, Meerut · Main Market Road
-                </p>
-
-                <div
-                  role="group"
-                  aria-label="Color theme switcher"
-                  className="inline-flex items-center gap-1 rounded-xl border border-[#1f1418]/12 dark:border-white/15 bg-white/70 dark:bg-white/5 p-1"
-                >
-                  <button
-                    type="button"
-                    aria-pressed={theme === 'light'}
-                    onClick={() => onThemeChange('light')}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                      theme === 'light'
-                        ? 'bg-[#7a1f3d] text-white shadow-sm'
-                        : 'text-[#524048] dark:text-[#cbb9c1] hover:text-[#1f1418] dark:hover:text-white'
-                    }`}
-                  >
-                    <Sun className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span>Light</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={theme === 'dark'}
-                    onClick={() => onThemeChange('dark')}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                      theme === 'dark'
-                        ? 'bg-[#9e2a4f] text-white shadow-sm'
-                        : 'text-[#524048] dark:text-[#cbb9c1] hover:text-[#1f1418] dark:hover:text-white'
-                    }`}
-                  >
-                    <Moon className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span>Dark</span>
-                  </button>
-                </div>
-              </div>
+              <p className="text-xs font-semibold tracking-widest uppercase text-[#7a1f3d] dark:text-[#e06d91]">
+                Lawar, Meerut · Main Market Road
+              </p>
 
               <h1
                 className="font-display mt-4 font-semibold tracking-tight text-[#1f1418] dark:text-[#f7eff2] leading-[1.06]"

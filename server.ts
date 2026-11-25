@@ -6,11 +6,15 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { createServer as createViteServer } from 'vite';
 import {
   PARLOUR_INFO,
+  buildRobotsTxt,
+  buildSitemapXml,
   buildWhatsAppBookingMessage,
   buildWhatsAppInquiryMessage,
   buildWhatsAppUrl,
   formatDisplayPhone,
   normalizeIndianPhone,
+  sanitizeMultiline,
+  sanitizeSingleLine,
   validateBookingInput,
   validateInquiryInput,
   type BookingRecord,
@@ -81,6 +85,10 @@ function createSeedStore(): StoreData {
         preferredTime: '11:30 AM',
         notes: 'Bridal trial & lehenga draping consultation',
         status: 'confirmed',
+        staffAssigned: 'Sweety Ji (Lead Bridal Artist)',
+        advancePaidInr: 4000,
+        staffNotes: 'Trial scheduled 3 days prior at studio.',
+        source: 'website',
         whatsappDispatchMode: 'whatsapp_deeplink',
         whatsappMessage: sampleBookingMessage,
         whatsappUrl: buildWhatsAppUrl(PARLOUR_WHATSAPP_NUMBER, sampleBookingMessage),
@@ -244,6 +252,25 @@ async function startServer() {
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+  });
+
+  const resolvePublicBaseUrl = (req: Request): string => {
+    const configured = process.env.APP_URL?.trim();
+    if (configured && /^https?:\/\//i.test(configured)) {
+      return configured.replace(/\/+$/, '');
+    }
+    const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+    const host = req.get('host') || `localhost:${PORT}`;
+    return `${proto}://${host}`;
+  };
+
+  app.get('/robots.txt', (req, res) => {
+    res.type('text/plain').send(buildRobotsTxt(resolvePublicBaseUrl(req)));
+  });
+
+  app.get('/sitemap.xml', (req, res) => {
+    const today = new Date().toISOString().slice(0, 10);
+    res.type('application/xml').send(buildSitemapXml(resolvePublicBaseUrl(req), today));
   });
 
   app.get('/api/config/public', (_req, res) => {
@@ -442,14 +469,78 @@ async function startServer() {
     });
   });
 
-  app.patch('/api/admin/bookings/:id', requireAdminAuth, (req, res) => {
-    const id = req.params.id;
-    const status = req.body?.status as BookingStatus | undefined;
-    const allowed: BookingStatus[] = ['pending', 'confirmed', 'completed', 'cancelled'];
-    if (!status || !allowed.includes(status)) {
-      res.status(400).json({ error: 'Invalid booking status.' });
+  app.post('/api/admin/bookings', requireAdminAuth, (req, res) => {
+    const body = req.body as Record<string, unknown>;
+    const validation = validateBookingInput({
+      customerName: typeof body?.customerName === 'string' ? body.customerName : '',
+      phone: typeof body?.phone === 'string' ? body.phone : '',
+      serviceId: typeof body?.serviceId === 'string' ? body.serviceId : '',
+      preferredDate: typeof body?.preferredDate === 'string' ? body.preferredDate : '',
+      preferredTime: typeof body?.preferredTime === 'string' ? body.preferredTime : '',
+      notes: typeof body?.notes === 'string' ? body.notes : '',
+    });
+
+    if (!validation.valid || !validation.data) {
+      res.status(400).json({ error: 'Please check the client booking details.', errors: validation.errors });
       return;
     }
+
+    const validData = validation.data;
+    const referenceId = generateReferenceId('SBP-BK');
+    const allowedStatuses: BookingStatus[] = ['pending', 'confirmed', 'completed', 'cancelled'];
+    const requestedStatus = typeof body?.status === 'string' && allowedStatuses.includes(body.status as BookingStatus)
+      ? (body.status as BookingStatus)
+      : 'confirmed';
+
+    const staffAssigned = typeof body?.staffAssigned === 'string' ? sanitizeSingleLine(body.staffAssigned, 80) : '';
+    const staffNotes = typeof body?.staffNotes === 'string' ? sanitizeMultiline(body.staffNotes, 400) : '';
+    const rawAdvance = typeof body?.advancePaidInr === 'number' ? body.advancePaidInr : Number(body?.advancePaidInr);
+    const advancePaidInr = Number.isFinite(rawAdvance) && rawAdvance >= 0
+      ? Math.min(validData.service.priceInr, Math.round(rawAdvance))
+      : 0;
+
+    const whatsappMessage = buildWhatsAppBookingMessage({
+      referenceId,
+      customerName: validData.customerName,
+      phone: validData.normalizedPhone,
+      serviceName: validData.service.name,
+      priceInr: validData.service.priceInr,
+      preferredDate: validData.preferredDate,
+      preferredTime: validData.preferredTime,
+      notes: validData.notes,
+    });
+
+    const record: BookingRecord = {
+      id: referenceId,
+      customerName: validData.customerName,
+      phone: validData.normalizedPhone,
+      serviceId: validData.service.id,
+      serviceName: validData.service.name,
+      priceInr: validData.service.priceInr,
+      preferredDate: validData.preferredDate,
+      preferredTime: validData.preferredTime,
+      notes: validData.notes || '',
+      status: requestedStatus,
+      staffAssigned,
+      advancePaidInr,
+      staffNotes,
+      source: 'walk-in',
+      whatsappDispatchMode: 'whatsapp_deeplink',
+      whatsappMessage,
+      whatsappUrl: buildWhatsAppUrl(PARLOUR_WHATSAPP_NUMBER, whatsappMessage),
+      createdAt: new Date().toISOString(),
+    };
+
+    const store = readStore();
+    store.bookings.unshift(record);
+    writeStore(store);
+    res.status(201).json({ booking: record });
+  });
+
+  app.patch('/api/admin/bookings/:id', requireAdminAuth, (req, res) => {
+    const id = req.params.id;
+    const body = req.body as Record<string, unknown>;
+    const allowed: BookingStatus[] = ['pending', 'confirmed', 'completed', 'cancelled'];
 
     const store = readStore();
     const target = store.bookings.find((item) => item.id === id);
@@ -458,19 +549,56 @@ async function startServer() {
       return;
     }
 
-    target.status = status;
+    if (body?.status !== undefined) {
+      if (typeof body.status !== 'string' || !allowed.includes(body.status as BookingStatus)) {
+        res.status(400).json({ error: 'Invalid booking status.' });
+        return;
+      }
+      target.status = body.status as BookingStatus;
+    }
+
+    if (typeof body?.preferredDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.preferredDate.trim())) {
+      target.preferredDate = body.preferredDate.trim();
+    }
+    if (typeof body?.preferredTime === 'string' && body.preferredTime.trim()) {
+      target.preferredTime = sanitizeSingleLine(body.preferredTime, 30);
+    }
+    if (typeof body?.staffAssigned === 'string') {
+      target.staffAssigned = sanitizeSingleLine(body.staffAssigned, 80);
+    }
+    if (typeof body?.staffNotes === 'string') {
+      target.staffNotes = sanitizeMultiline(body.staffNotes, 400);
+    }
+    if (body?.advancePaidInr !== undefined) {
+      const adv = Number(body.advancePaidInr);
+      if (!Number.isFinite(adv) || adv < 0) {
+        res.status(400).json({ error: 'Advance amount must be zero or positive.' });
+        return;
+      }
+      target.advancePaidInr = Math.min(target.priceInr, Math.round(adv));
+    }
+
     writeStore(store);
     res.json({ booking: target });
   });
 
-  app.patch('/api/admin/inquiries/:id', requireAdminAuth, (req, res) => {
+  app.delete('/api/admin/bookings/:id', requireAdminAuth, (req, res) => {
     const id = req.params.id;
-    const status = req.body?.status as InquiryStatus | undefined;
-    const allowed: InquiryStatus[] = ['new', 'replied', 'closed'];
-    if (!status || !allowed.includes(status)) {
-      res.status(400).json({ error: 'Invalid inquiry status.' });
+    const store = readStore();
+    const index = store.bookings.findIndex((item) => item.id === id);
+    if (index === -1) {
+      res.status(404).json({ error: 'Booking record not found.' });
       return;
     }
+    store.bookings.splice(index, 1);
+    writeStore(store);
+    res.json({ deleted: id });
+  });
+
+  app.patch('/api/admin/inquiries/:id', requireAdminAuth, (req, res) => {
+    const id = req.params.id;
+    const body = req.body as Record<string, unknown>;
+    const allowed: InquiryStatus[] = ['new', 'replied', 'closed'];
 
     const store = readStore();
     const target = store.inquiries.find((item) => item.id === id);
@@ -479,9 +607,33 @@ async function startServer() {
       return;
     }
 
-    target.status = status;
+    if (body?.status !== undefined) {
+      if (typeof body.status !== 'string' || !allowed.includes(body.status as InquiryStatus)) {
+        res.status(400).json({ error: 'Invalid inquiry status.' });
+        return;
+      }
+      target.status = body.status as InquiryStatus;
+    }
+
+    if (typeof body?.staffNotes === 'string') {
+      target.staffNotes = sanitizeMultiline(body.staffNotes, 400);
+    }
+
     writeStore(store);
     res.json({ inquiry: target });
+  });
+
+  app.delete('/api/admin/inquiries/:id', requireAdminAuth, (req, res) => {
+    const id = req.params.id;
+    const store = readStore();
+    const index = store.inquiries.findIndex((item) => item.id === id);
+    if (index === -1) {
+      res.status(404).json({ error: 'Inquiry record not found.' });
+      return;
+    }
+    store.inquiries.splice(index, 1);
+    writeStore(store);
+    res.json({ deleted: id });
   });
 
   if (process.env.NODE_ENV === 'production') {

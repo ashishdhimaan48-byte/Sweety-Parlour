@@ -49,6 +49,10 @@ export interface BookingRecord {
   preferredTime: string;
   notes: string;
   status: BookingStatus;
+  staffAssigned?: string;
+  advancePaidInr?: number;
+  staffNotes?: string;
+  source?: 'website' | 'walk-in';
   whatsappDispatchMode: WhatsAppDispatchMode;
   whatsappMessage: string;
   whatsappUrl: string;
@@ -62,6 +66,7 @@ export interface InquiryRecord {
   topic: string;
   message: string;
   status: InquiryStatus;
+  staffNotes?: string;
   whatsappDispatchMode: WhatsAppDispatchMode;
   whatsappMessage: string;
   whatsappUrl: string;
@@ -103,6 +108,13 @@ export const TIME_SLOTS: string[] = [
   '04:00 PM',
   '05:30 PM',
   '07:00 PM',
+];
+
+export const STAFF_ARTISTS: string[] = [
+  'Sweety Ji (Lead Bridal Artist)',
+  'Priya (Skin & Facial Specialist)',
+  'Ritu (Hair & Saree Draping)',
+  'Neha (Organic Mehndi & Nails)',
 ];
 
 export const INQUIRY_TOPICS: string[] = [
@@ -422,12 +434,256 @@ export function buildWhatsAppUrl(parlourPhoneDigits: string, message: string): s
   return url.toString();
 }
 
+export function calculateBookingBalance(priceInr: number, advancePaidInr = 0): number {
+  const safePrice = Number.isFinite(priceInr) && priceInr > 0 ? priceInr : 0;
+  const safeAdvance = Number.isFinite(advancePaidInr) && advancePaidInr > 0 ? advancePaidInr : 0;
+  return Math.max(0, safePrice - safeAdvance);
+}
+
+export function filterAdminBookings(
+  bookings: BookingRecord[],
+  statusFilter: string,
+  searchQuery: string,
+): BookingRecord[] {
+  const q = searchQuery.trim().toLowerCase();
+  return bookings.filter((booking) => {
+    if (statusFilter !== 'all' && booking.status !== statusFilter) {
+      return false;
+    }
+    if (!q) return true;
+    return (
+      booking.id.toLowerCase().includes(q) ||
+      booking.customerName.toLowerCase().includes(q) ||
+      booking.phone.toLowerCase().includes(q) ||
+      booking.serviceName.toLowerCase().includes(q) ||
+      (booking.staffAssigned || '').toLowerCase().includes(q)
+    );
+  });
+}
+
+export function filterAdminInquiries(
+  inquiries: InquiryRecord[],
+  statusFilter: string,
+  searchQuery: string,
+): InquiryRecord[] {
+  const q = searchQuery.trim().toLowerCase();
+  return inquiries.filter((inquiry) => {
+    if (statusFilter !== 'all' && inquiry.status !== statusFilter) {
+      return false;
+    }
+    if (!q) return true;
+    return (
+      inquiry.id.toLowerCase().includes(q) ||
+      inquiry.customerName.toLowerCase().includes(q) ||
+      inquiry.phone.toLowerCase().includes(q) ||
+      inquiry.topic.toLowerCase().includes(q) ||
+      inquiry.message.toLowerCase().includes(q)
+    );
+  });
+}
+
 export function summarizeDeskStats(bookings: BookingRecord[], inquiries: InquiryRecord[]) {
+  const activeBookings = bookings.filter((b) => b.status !== 'cancelled');
+  const expectedRevenueInr = activeBookings.reduce((sum, b) => sum + (b.priceInr || 0), 0);
+  const collectedAdvanceInr = activeBookings.reduce((sum, b) => sum + (b.advancePaidInr || 0), 0);
+
   return {
     totalBookings: bookings.length,
     pendingBookings: bookings.filter((b) => b.status === 'pending').length,
     confirmedBookings: bookings.filter((b) => b.status === 'confirmed').length,
+    completedBookings: bookings.filter((b) => b.status === 'completed').length,
     totalInquiries: inquiries.length,
     openInquiries: inquiries.filter((i) => i.status === 'new').length,
+    expectedRevenueInr,
+    collectedAdvanceInr,
   };
 }
+
+function escapeCsvCell(value: string | number): string {
+  const str = String(value ?? '');
+  const neutralized = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  return `"${neutralized.replace(/"/g, '""')}"`;
+}
+
+export function bookingsToCsv(bookings: BookingRecord[]): string {
+  const headers = [
+    'Ref ID',
+    'Client Name',
+    'Phone',
+    'Service',
+    'Date',
+    'Time',
+    'Status',
+    'Stylist Assigned',
+    'Price (INR)',
+    'Advance Paid (INR)',
+    'Balance Due (INR)',
+    'Source',
+    'Client Notes',
+    'Staff Notes',
+  ];
+
+  const rows = bookings.map((b) => [
+    b.id,
+    b.customerName,
+    formatDisplayPhone(b.phone),
+    b.serviceName,
+    b.preferredDate,
+    b.preferredTime,
+    b.status,
+    b.staffAssigned || '',
+    b.priceInr,
+    b.advancePaidInr || 0,
+    calculateBookingBalance(b.priceInr, b.advancePaidInr || 0),
+    b.source || 'website',
+    b.notes || '',
+    b.staffNotes || '',
+  ]);
+
+  return [headers, ...rows].map((row) => row.map(escapeCsvCell).join(',')).join('\n');
+}
+
+export interface ParlourFaq {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+export const PARLOUR_FAQS: ParlourFaq[] = [
+  {
+    id: 'whatsapp-booking',
+    question: 'How do I book an appointment at Sweety Beauty Parlour on WhatsApp?',
+    answer:
+      'Choose your service from the rate card, enter your 10-digit Indian WhatsApp number and preferred slot, and click Confirm & Send to WhatsApp. Your reference ID is saved at our Lawar desk and opens a pre-filled WhatsApp message immediately.',
+  },
+  {
+    id: 'lawar-location',
+    question: 'Where is Sweety Beauty Parlour located in Lawar, Meerut?',
+    answer:
+      'Our studio is on Main Market Road, near Lawar Bus Stand, Lawar, Meerut, Uttar Pradesh 250222, open all 7 days from 10:00 AM to 8:00 PM.',
+  },
+  {
+    id: 'bridal-trials',
+    question: 'Do you offer bridal makeup trials and venue or home visits?',
+    answer:
+      'Yes. Royal HD Bridal Artistry includes a bridal consultation and dupatta or lehenga draping, and venue visits across Lawar, Sardhana, Daurala, and Meerut can be arranged via WhatsApp Inquiry.',
+  },
+  {
+    id: 'pre-bridal-timing',
+    question: 'How early should I book pre-bridal skin and mehndi services?',
+    answer:
+      'We recommend booking bridal dates 3 to 6 weeks in advance, scheduling pre-bridal facials 4 to 7 days prior, and reserving organic Sojat mehndi 2 days before your wedding.',
+  },
+];
+
+function sanitizeBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  return trimmed || 'https://sweetybeautyparlour.in';
+}
+
+export function buildParlourStructuredData(baseUrl: string, telephone?: string) {
+  const cleanUrl = sanitizeBaseUrl(baseUrl);
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BeautySalon',
+        '@id': `${cleanUrl}/#beauty-salon`,
+        name: PARLOUR_INFO.name,
+        url: cleanUrl,
+        image: `${cleanUrl}${HERO_IMAGE.url}`,
+        description:
+          'Luxury bridal makeup, botanical skin rituals, keratin hair spa, and organic Sojat mehndi studio in Lawar, Meerut with instant WhatsApp appointment booking.',
+        ...(telephone ? { telephone } : {}),
+        priceRange: '₹₹',
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: 'Main Market Road, Near Lawar Bus Stand',
+          addressLocality: 'Lawar, Meerut',
+          addressRegion: 'UP',
+          postalCode: '250222',
+          addressCountry: 'IN',
+        },
+        areaServed: [
+          { '@type': 'Place', name: 'Lawar, Meerut' },
+          { '@type': 'Place', name: 'Meerut, Uttar Pradesh' },
+          { '@type': 'Place', name: 'Sardhana' },
+          { '@type': 'Place', name: 'Daurala' },
+        ],
+        openingHoursSpecification: [
+          {
+            '@type': 'OpeningHoursSpecification',
+            dayOfWeek: [
+              'Monday',
+              'Tuesday',
+              'Wednesday',
+              'Thursday',
+              'Friday',
+              'Saturday',
+              'Sunday',
+            ],
+            opens: '10:00',
+            closes: '20:00',
+          },
+        ],
+        hasOfferCatalog: {
+          '@type': 'OfferCatalog',
+          name: 'Bridal, Skin, Hair & Mehndi Services',
+          itemListElement: SERVICES.map((service) => ({
+            '@type': 'Offer',
+            priceCurrency: 'INR',
+            price: String(service.priceInr),
+            itemOffered: {
+              '@type': 'Service',
+              name: service.name,
+              category: service.category,
+              description: service.summary,
+            },
+          })),
+        },
+      },
+      {
+        '@type': 'FAQPage',
+        '@id': `${cleanUrl}/#faq`,
+        mainEntity: PARLOUR_FAQS.map((item) => ({
+          '@type': 'Question',
+          name: item.question,
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: item.answer,
+          },
+        })),
+      },
+    ],
+  };
+}
+
+export function buildRobotsTxt(baseUrl: string): string {
+  const cleanUrl = sanitizeBaseUrl(baseUrl);
+  return [
+    'User-agent: *',
+    'Allow: /',
+    'Disallow: /api/',
+    '',
+    `Sitemap: ${cleanUrl}/sitemap.xml`,
+    '',
+  ].join('\n');
+}
+
+export function buildSitemapXml(baseUrl: string, lastModDate: string): string {
+  const cleanUrl = sanitizeBaseUrl(baseUrl);
+  const safeDate = /^\d{4}-\d{2}-\d{2}$/.test(lastModDate) ? lastModDate : '2026-11-24';
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    '  <url>',
+    `    <loc>${cleanUrl}/</loc>`,
+    `    <lastmod>${safeDate}</lastmod>`,
+    '    <changefreq>weekly</changefreq>',
+    '    <priority>1.0</priority>',
+    '  </url>',
+    '</urlset>',
+    '',
+  ].join('\n');
+}
+

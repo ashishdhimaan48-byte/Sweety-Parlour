@@ -1,6 +1,7 @@
 import { Clock, MapPin, MessageCircle, Moon, Sun } from 'lucide-react';
 import { PARLOUR_INFO } from '../utils/parlour';
-import type { ThemeMode } from './HeroSection';
+import { BrandLogo } from './BrandLogo';
+import type { ThemeMode } from '../App';
 
 interface LocationFooterProps {
   whatsappDisplayNumber: string;
@@ -22,16 +23,19 @@ export function LocationFooter({
       <div className="glass-card rounded-3xl p-6 sm:p-8">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
           <div>
-            <p className="font-display text-2xl font-semibold text-[#1f1418] dark:text-[#f7eff2]">
-              {PARLOUR_INFO.name}
-            </p>
-            <p className="mt-2 text-sm leading-relaxed text-[#524048] dark:text-[#cbb9c1]">
+            <div className="flex items-center gap-2.5">
+              <BrandLogo className="h-9 w-9 shrink-0" />
+              <p className="font-display text-2xl font-semibold text-[#1f1418] dark:text-[#f7eff2]">
+                {PARLOUR_INFO.name}
+              </p>
+            </div>
+            <p className="mt-3 text-sm leading-relaxed text-[#524048] dark:text-[#cbb9c1]">
               Bridal makeup, botanical skin care, hair rituals, and organic mehndi studio serving
               Lawar and Meerut families.
             </p>
           </div>
 
-          <div className="space-y-2 text-sm text-[#524048] dark:text-[#cbb9c1]">
+          <address className="not-italic space-y-2 text-sm text-[#524048] dark:text-[#cbb9c1]">
             <div className="flex items-start gap-2.5">
               <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#7a1f3d] dark:text-[#e06d91]" aria-hidden="true" />
               <span>{PARLOUR_INFO.address}</span>
@@ -44,12 +48,15 @@ export function LocationFooter({
               <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#128c7e] dark:text-[#2ec4b6]" aria-hidden="true" />
               <span className="tabular-nums">WhatsApp Desk: {whatsappDisplayNumber}</span>
             </div>
-          </div>
+          </address>
 
           <div className="flex flex-col items-start justify-between gap-4 md:items-end">
-            <div className="flex flex-wrap items-center gap-5 text-sm font-medium text-[#524048] dark:text-[#cbb9c1]">
+            <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-[#524048] dark:text-[#cbb9c1]">
               <a href="#services" className="hover:text-[#1f1418] dark:hover:text-white hover:underline underline-offset-4">
                 Services
+              </a>
+              <a href="#faq" className="hover:text-[#1f1418] dark:hover:text-white hover:underline underline-offset-4">
+                FAQ
               </a>
               <button
                 type="button"
